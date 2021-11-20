@@ -1,0 +1,280 @@
+---
+title: "AntCommunity"
+author: "Marcela Morassi"
+date: "11/20/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(ggpubr)
+library(RColorBrewer)
+library(rcompanion)
+library(dplyr)
+library(ggplot2)
+library(ggforce)
+library(vegan)
+theme_set(theme_classic()) # Set the theme
+
+
+setwd("C:/Users/Marcela Morassi/Documents/Github/AntCommunity")
+
+data <- read.csv("F21_ant_data.csv")
+```
+
+S. invictica habitat preference
+  contrasts
+```{r}
+#mutating data
+data <- data %>% 
+  mutate(Canopy_cover = if_else(Canopy_cover == 0 | Canopy_cover == 1, "open", "closed")) %>% 
+  mutate(Ground_cover = if_else(Ground_cover == 0 | Ground_cover == 1, "sparse", "dense")) %>% 
+  mutate_all(na_if, "")
+
+#Open (canopy cover 0 or 1) vs. Closed (canopy cover 2 or 3) canopies.
+canopy_contrast <- data %>% 
+  select(Fire_ants_present, Canopy_cover) %>% 
+  mutate(Canopy_cover = if_else(Canopy_cover == 0 | Canopy_cover == 1, "open", "closed")) %>% 
+  table()
+chisq.test(canopy_contrast)
+
+#Sparse (0/1) vs. dense (2/3) ground cover.
+ground_contrast <- data %>% 
+  select(Fire_ants_present, Ground_cover) %>% 
+  mutate(Ground_cover = if_else(Ground_cover == 0 | Ground_cover == 1, "sparse", "dense")) %>% 
+  table()
+chisq.test(ground_contrast)
+
+#Low vs. high disturbance
+disturbance_contrast <- data %>% 
+  select(Fire_ants_present, Disturbance) %>% 
+  mutate_all(na_if, "") %>%       #make blank spaces into na
+  table()
+chisq.test(disturbance_contrast)
+
+#Habitat types (Q/R/P)
+habitat_contrast <- data %>% 
+  select(Fire_ants_present, Ground_cover) %>% 
+  mutate(Ground_cover = if_else(Ground_cover == 0 | Ground_cover == 1, "sparse", "dense")) %>% 
+  table()
+chisq.test(ground_contrast)
+
+#interaction between openness and disturbance
+interaction_contrast <- data %>%
+  select(Fire_ants_present, Canopy_cover, Disturbance) %>% 
+  drop_na() %>% 
+  unite("interactions", c("Canopy_cover", "Disturbance"),sep=".") %>% 
+  table()
+chisq.test(interaction_contrast)  
+
+```
+
+
+Jaccard's index of similarity
+```{r}
+#creating Jaccard function
+jaccard_similarity = function(com_1, com_2) {
+  # com_1 and com_2 are the arguments of the function, 
+  # they should be the names in different communities
+ 
+  # Create local variables for the intersection and union;
+  common_spp = intersect(com_1, com_2) 
+  total_spp = union(com_1, com_2) 
+  # these variables are created while the function runs & destroyed when it ends
+  # The last value of the function is its output (a.k.a., return value)
+  length(common_spp) / length(total_spp) # return this
+}
+
+data_long <- data %>% 
+    pivot_longer(cols=13:36,
+               names_to="Species",
+               values_to="Count") %>% 
+  select(Canopy_cover, Disturbance, Species, Count) %>% 
+  drop_na() %>% 
+  filter(Count != 0)
+
+com_open_high = data_long %>% 
+  filter(Canopy_cover == "open", Disturbance == "high") %>% 
+  # Get the list of species as a vector
+  pull(Species) %>% unique()
+
+com_closed_high = data_long %>% 
+  filter(Canopy_cover == "closed", Disturbance == "high") %>% 
+  # Get the list of species as a vector
+  pull(Species) %>% unique()
+
+
+jaccard_similarity(com_open_high, com_closed_high)
+
+```
+
+Species Accumulation Curve
+```{r}
+
+# Create a function that converts a number to presence-absense
+to_presence_absense = function(x) if_else(x <= 0 | is.na(x), 0, 1) # Recodes data as 0 if it's 0 or missing or 1 otherwise
+
+# Format data for the species accumulation curve
+format_sac_data = function(data) {
+    data %>% 
+      # Select only species columns
+      select(Solenopsis.invicta:Other.species) %>% 
+      # We don't want to include this "other species"
+      select(-Other.species) %>% 
+      # use to_presence_absense() on all columns
+      mutate(across(everything(), to_presence_absense))
+}
+
+sac_high = data %>% 
+  filter(Disturbance == "high") %>% 
+  format_sac_data() %>% 
+  specaccum(method = "random", permutations = 500)   # Use these argument options
+
+#reformatting output
+sac_high_tidy = 
+  tibble(
+    sites = sac_high$sites,
+    richness = sac_high$richness,
+    se = sac_high$sd # the "SD" column is actually a standard error measure
+  ) 
+View(sac_high_tidy)
+
+#Create plot
+sac_high_plot = sac_high_tidy %>% 
+  # Define the confidence intervals based on mean richness & standard errors
+  mutate(lower_ci = richness - se * 1.96,
+         upper_ci = richness + se * 1.96) %>% 
+  ggplot() + aes(x = sites, y = richness) +
+  geom_line(size = 1) + # line for richness
+  # The lines below add in confidence intervals
+  geom_line(aes(y = lower_ci), linetype = 2, alpha = .7) + 
+  geom_line(aes(y = upper_ci), linetype = 2, alpha = .7) +
+  # alpha adds a bit of transparency
+  xlab("Sampling intensity (number of sites)") +
+  ylab("Number of ant species")
+sac_high_plot
+
+#combine last steps into function:
+get_sac = function(data) {
+  # wide_data is data in the wide format, probably subset or filtered
+  sac = format_sac_data(data) %>% # Convert to SAC format
+    specaccum(method = "random", permutations = 500) # calculate SAC
+  tibble( # Tidy output
+    sites = sac$sites,
+    richness = sac$richness,
+    se = sac$sd
+  ) %>%   
+    mutate(lower_ci = richness - se * 1.96,
+           upper_ci = richness + se * 1.96)
+}
+plot_sac = function(sac_data) {
+  # sac_data is the output of get_sac()
+  sac_data %>% ggplot() + 
+    aes(x = sites, y = richness) +
+    geom_line(size = 1) + # line for richness
+    # The lines below add in confidence intervals
+    geom_line(aes(y = lower_ci), linetype = 2, alpha = .7) + 
+    geom_line(aes(y = upper_ci), linetype = 2, alpha = .7) +
+    # alpha adds a bit of transparency
+    xlab("Sampling intensity (number of sites)") +
+    ylab("Number of ant species")
+}
+
+#Comparing disturbance levels with SAC
+# Create the SAC data frames for each group in your comparison
+sac_dist_hi = data %>% 
+    filter(Disturbance == "high") %>% 
+    get_sac() %>% 
+    mutate(Disturbance = "high") # Use the Mutate Add disturbance column to sac results
+sac_dist_low = data %>% 
+    filter(Disturbance == "low") %>% 
+    get_sac() %>% 
+    mutate(Disturbance = "low") # Add disturbance column back to sac results
+
+sac_dist_combined = # Combine them into one data frame
+  bind_rows(sac_dist_hi, sac_dist_low) # Note that bind_rows() can combine more than two data frames, if you're doing a 3+ part comparison
+
+plot_sac(sac_dist_combined) + # Creates a standard SAC Plot
+  aes(color=Disturbance) +    # Separates out the lines by color based on the Disturbance column
+  scale_color_viridis_d()     # Make the colors look nice
+
+```
+
+
+Rank Abundance Curves (RAC)
+```{r}
+data_long2 = data %>%
+  pivot_longer(cols=13:36,
+               names_to="Species",
+               values_to="Count") %>%
+  mutate_all(na_if,"") %>%
+  select(Species, Count) %>% 
+  drop_na() %>%
+  group_by(Species) %>% 
+  summarise(N = sum(Count)) %>% 
+  arrange(desc(N))
+
+
+#RAC function
+plot_rank_abundance = function(data_long2, right_margin = 2.8) {
+  # Make the rank abundance plot
+  # The right_margin argument is used to make sure that 
+  # the angled axis labels don't go of the page
+  # make it larger or smaller to suit your tastes
+  ggplot(data_long2, aes(x = reorder(Species,(-N)), y = N)) +
+    geom_line(group = 1) + # Create a descending line
+    scale_y_log10() + # puts y axis on log scale
+    theme(axis.text.x = # cleans up appearance of x axis labels
+            element_text(angle = -20, hjust = 0.05, # angled, justified text
+                         vjust = 1, face = "italic"), # also in italics
+          # makes sure that the axis labels don't go off the page
+          plot.margin = unit(c(0,right_margin,0,0)+.1, "cm"))
+  # Be sure sure that Species has been coded as a factor, in decreasing order of N!
+}
+plot_rank_abundance(data_long2)
+
+```
+
+Shannon Diversity Index
+```{r}
+shannon_diversity = function(species, count) {
+  # species: vector of species names; 
+  # count: how many of each species are present
+  
+  # Create p, a vector of relative frequencies
+  p = tibble(species, count) %>% 
+    # Merge duplicate species 
+    group_by(species) %>% 
+    summarize(count = sum(count)) %>% 
+    ungroup() %>% 
+    # Remove zeroes
+    filter(count > 0) %>% 
+    # Convert to frequencies
+    mutate(p = count / sum(count)) %>% 
+    # Extract column p
+    pull(p) 
+  if(length(p) < 2) return(0) # one or 0 species has an H of 0
+  exp( -sum(p * log(p)) ) # exponential of shannon index
+}
+
+# Calculate the shannon diversity
+shannon_diversity(LETTERS[1:5], # Species names, A : E
+                 c(100, 5, 30, 22, 140)) # Species counts
+
+data_long3 = data %>%
+  pivot_longer(cols=13:36,
+               names_to="Species",
+               values_to="Count") %>%
+  mutate_all(na_if,"") %>%
+  select(Species, Count, Disturbance, Canopy_cover) %>% 
+  drop_na() %>%
+  group_by(Disturbance) %>% 
+  summarize(shannon = shannon_diversity(Species, Count)) %>% 
+  View()
+
+```
+
