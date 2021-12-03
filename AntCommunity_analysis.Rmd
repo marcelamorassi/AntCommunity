@@ -11,12 +11,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 library(tidyverse)
-library(ggpubr)
-library(RColorBrewer)
-library(rcompanion)
 library(dplyr)
 library(ggplot2)
-library(ggforce)
 library(vegan)
 theme_set(theme_classic()) # Set the theme
 
@@ -157,6 +153,7 @@ sac_high_plot = sac_high_tidy %>%
   xlab("Sampling intensity (number of sites)") +
   ylab("Number of ant species")
 sac_high_plot
+ggsave('AntComm_fig1.png')
 
 #combine last steps into function:
 get_sac = function(data) {
@@ -201,7 +198,7 @@ sac_dist_combined = # Combine them into one data frame
 plot_sac(sac_dist_combined) + # Creates a standard SAC Plot
   aes(color=Disturbance) +    # Separates out the lines by color based on the Disturbance column
   scale_color_viridis_d()     # Make the colors look nice
-
+ggsave("AntComm_fig2.png")
 ```
 
 
@@ -228,7 +225,8 @@ plot_rank_abundance = function(data_long2, right_margin = 2.8) {
   ggplot(data_long2, aes(x = reorder(Species,(-N)), y = N)) +
     geom_line(group = 1) + # Create a descending line
     scale_y_log10() + # puts y axis on log scale
-    theme(axis.text.x = # cleans up appearance of x axis labels
+    xlab("Species") +
+    theme(axis.text.x =  # cleans up appearance of x axis labels
             element_text(angle = -20, hjust = 0.05, # angled, justified text
                          vjust = 1, face = "italic"), # also in italics
           # makes sure that the axis labels don't go off the page
@@ -236,6 +234,7 @@ plot_rank_abundance = function(data_long2, right_margin = 2.8) {
   # Be sure sure that Species has been coded as a factor, in decreasing order of N!
 }
 plot_rank_abundance(data_long2)
+ggsave("AntComm_fig3.png")
 
 ```
 
@@ -261,9 +260,7 @@ shannon_diversity = function(species, count) {
   exp( -sum(p * log(p)) ) # exponential of shannon index
 }
 
-# Calculate the shannon diversity
-shannon_diversity(LETTERS[1:5], # Species names, A : E
-                 c(100, 5, 30, 22, 140)) # Species counts
+
 
 data_long3 = data %>%
   pivot_longer(cols=13:36,
