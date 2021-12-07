@@ -138,12 +138,13 @@ sac_high_tidy =
     se = sac_high$sd # the "SD" column is actually a standard error measure
   ) 
 View(sac_high_tidy)
+summary(sac_high_tidy)
 
 #Create plot
 sac_high_plot = sac_high_tidy %>% 
   # Define the confidence intervals based on mean richness & standard errors
-  mutate(lower_ci = richness - se * 1.96,
-         upper_ci = richness + se * 1.96) %>% 
+  mutate(lower_ci = richness - se * 5.049,
+         upper_ci = richness + se * 5.049) %>% 
   ggplot() + aes(x = sites, y = richness) +
   geom_line(size = 1) + # line for richness
   # The lines below add in confidence intervals
@@ -165,8 +166,8 @@ get_sac = function(data) {
     richness = sac$richness,
     se = sac$sd
   ) %>%   
-    mutate(lower_ci = richness - se * 1.96,
-           upper_ci = richness + se * 1.96)
+    mutate(lower_ci = richness - se * 5.049,
+           upper_ci = richness + se * 5.049)
 }
 plot_sac = function(sac_data) {
   # sac_data is the output of get_sac()
