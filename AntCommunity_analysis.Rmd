@@ -34,16 +34,16 @@ data <- data %>%
 #Open (canopy cover 0 or 1) vs. Closed (canopy cover 2 or 3) canopies.
 canopy_contrast <- data %>% 
   select(Fire_ants_present, Canopy_cover) %>% 
-  mutate(Canopy_cover = if_else(Canopy_cover == 0 | Canopy_cover == 1, "open", "closed")) %>% 
   table()
 chisq.test(canopy_contrast)
+#X-squared = 21.604, df = 1, p-value = 3.352e-06
 
 #Sparse (0/1) vs. dense (2/3) ground cover.
 ground_contrast <- data %>% 
   select(Fire_ants_present, Ground_cover) %>% 
-  mutate(Ground_cover = if_else(Ground_cover == 0 | Ground_cover == 1, "sparse", "dense")) %>% 
   table()
 chisq.test(ground_contrast)
+#X-squared = 25.218, df = 1, p-value = 5.12e-07
 
 #Low vs. high disturbance
 disturbance_contrast <- data %>% 
@@ -51,13 +51,7 @@ disturbance_contrast <- data %>%
   mutate_all(na_if, "") %>%       #make blank spaces into na
   table()
 chisq.test(disturbance_contrast)
-
-#Habitat types (Q/R/P)
-habitat_contrast <- data %>% 
-  select(Fire_ants_present, Ground_cover) %>% 
-  mutate(Ground_cover = if_else(Ground_cover == 0 | Ground_cover == 1, "sparse", "dense")) %>% 
-  table()
-chisq.test(ground_contrast)
+#X-squared = 1.4873, df = 1, p-value = 0.2226
 
 #interaction between openness and disturbance
 interaction_contrast <- data %>%
@@ -66,6 +60,7 @@ interaction_contrast <- data %>%
   unite("interactions", c("Canopy_cover", "Disturbance"),sep=".") %>% 
   table()
 chisq.test(interaction_contrast)  
+#X-squared = 24.347, df = 3, p-value = 2.114e-05
 
 ```
 
@@ -166,8 +161,8 @@ get_sac = function(data) {
     richness = sac$richness,
     se = sac$sd
   ) %>%   
-    mutate(lower_ci = richness - se * 5.049,
-           upper_ci = richness + se * 5.049)
+    mutate(lower_ci = richness - se * 1.96,
+           upper_ci = richness + se * 1.96)
 }
 plot_sac = function(sac_data) {
   # sac_data is the output of get_sac()
@@ -200,6 +195,25 @@ plot_sac(sac_dist_combined) + # Creates a standard SAC Plot
   aes(color=Disturbance) +    # Separates out the lines by color based on the Disturbance column
   scale_color_viridis_d()     # Make the colors look nice
 ggsave("AntComm_fig2.png")
+
+#Comparing disturbance levels with SAC
+# Create the SAC data frames for each group in your comparison
+sac_open = data %>% 
+    filter(Canopy_cover == "open") %>% 
+    get_sac() %>% 
+  mutate(Canopy = "open")
+sac_closed = data %>% 
+    filter(Canopy_cover == "closed") %>% 
+    get_sac() %>% 
+  mutate(Canopy = "closed")
+
+sac_canopy_combined = # Combine them into one data frame
+  bind_rows(sac_open, sac_closed) # Note that bind_rows() can combine more than two data frames, if you're doing a 3+ part comparison
+
+plot_sac(sac_canopy_combined) + # Creates a standard SAC Plot
+  aes(color=Canopy) +    # Separates out the lines by color based on the Disturbance column
+  scale_color_viridis_d()     # Make the colors look nice
+ggsave("AntComm_fig2b.png")
 ```
 
 
@@ -214,7 +228,8 @@ data_long2 = data %>%
   drop_na() %>%
   group_by(Species) %>% 
   summarise(N = sum(Count)) %>% 
-  arrange(desc(N))
+  arrange(desc(N)) %>% 
+  filter(N>0)
 
 
 #RAC function
@@ -273,6 +288,18 @@ data_long3 = data %>%
   group_by(Disturbance) %>% 
   summarize(shannon = shannon_diversity(Species, Count)) %>% 
   View()
+
+data_long3 = data %>%
+  pivot_longer(cols=13:36,
+               names_to="Species",
+               values_to="Count") %>%
+  mutate_all(na_if,"") %>%
+  select(Species, Count, Disturbance, Canopy_cover) %>% 
+  drop_na() %>%
+  group_by(Canopy_cover) %>% 
+  summarize(shannon = shannon_diversity(Species, Count)) %>% 
+  View()
+
 
 ```
 
